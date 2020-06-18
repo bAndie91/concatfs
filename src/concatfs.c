@@ -51,6 +51,8 @@ struct chunk {
 	struct chunk * next;
 
 	int fd;
+	off_t start_offset;
+	size_t portion;
 	off_t fsize;
 };
 
@@ -140,7 +142,8 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 {
 	struct concat_file * rv = 0;
 	char bpath[PATH_MAX+1];
-	char fpath[PATH_MAX+1];
+	char linebuf[PATH_MAX+1];
+	char * fpath;
 	char * base_dir;
 	struct stat stbuf;
 	struct chunk * c = 0;
@@ -162,32 +165,52 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 
 	base_dir = dirname(bpath);
 
-	fpath[PATH_MAX] = 0;
+	linebuf[PATH_MAX] = 0;
 	bpath[PATH_MAX] = 0;
 
 	rv->fd = fd;
 	rv->refcount = 1;
 
-	while (fgets(fpath, sizeof(fpath), fp)) {
+	while (fgets(linebuf, sizeof(linebuf), fp)) {
 		char tpath[PATH_MAX];
 		struct chunk * c_n;
+		off_t start_offset, portion;
 
-		fpath[strlen(fpath) - 1] = 0;
+		linebuf[strlen(linebuf) - 1] = 0;
+		
+		if(sscanf(linebuf, "%d %d", &start_offset, &portion) != 2)
+		{
+			// TODO: die nicer
+			abort();
+		}
+		/* Set fpath after to the 2nd space on the line */
+		fpath = strchr(linebuf, ' ');
+		if(fpath == NULL)
+		{
+			// TODO: die nicer
+			abort();
+		}
+		fpath = strchr(fpath, ' ');
+		if(fpath == NULL)
+		{
+			// TODO: die nicer
+			abort();
+		}
+		fpath += 1;
+		/* fpath points to the target filename */
+
+		rv->fsize += portion;
 
 		if (fpath[0] == '/') {
 			strncpy(tpath, fpath, sizeof(tpath));
 		} else {
 			snprintf(tpath, sizeof(tpath), "%s/%s",base_dir, fpath);
 		}
-		if (stat(tpath, &stbuf) == 0) {
-			rv->fsize += stbuf.st_size;
-		} else {
-			continue;
-		}
-
 		if (fd >= 0) {
 			c_n = (struct chunk *) calloc(sizeof(struct chunk), 1);
 
+			c_n->start_offset = start_offset;
+			c_n->portion = portion;
 			c_n->fsize = stbuf.st_size;
 			c_n->fd = open(tpath, O_RDONLY);
 

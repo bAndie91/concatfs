@@ -16,7 +16,7 @@ Say there is a file 'vfile.dat' with content:
 
 Empty lines are ignored.
 
-It manifests a file on the same name 'vfile.dat', but its first 512
+It manifests a readonly file on the same name 'vfile.dat', but its first 512
 byte is got from file1.dat from offset 1024, the second 512 bytes from
 file2.dat from the beginning. So vfile.dat is 1024 bytes long.
 

@@ -53,7 +53,6 @@ struct chunk {
 	int fd;
 	off_t start_offset;
 	size_t portion;
-	off_t fsize;
 };
 
 struct concat_file {
@@ -145,7 +144,6 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 	char linebuf[PATH_MAX+1];
 	char * fpath;
 	char * base_dir;
-	struct stat stbuf;
 	struct chunk * c = 0;
 	
 	FILE * fp;
@@ -178,7 +176,7 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 
 		linebuf[strlen(linebuf) - 1] = 0;
 		
-		if(sscanf(linebuf, "%d %d", &start_offset, &portion) != 2)
+		if(sscanf(linebuf, "%llu %llu", &start_offset, &portion) != 2)
 		{
 			// TODO: die nicer
 			abort();
@@ -190,6 +188,7 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 			// TODO: die nicer
 			abort();
 		}
+		fpath += 1;
 		fpath = strchr(fpath, ' ');
 		if(fpath == NULL)
 		{
@@ -211,7 +210,6 @@ static struct concat_file * open_concat_file(int fd, const char * path)
 
 			c_n->start_offset = start_offset;
 			c_n->portion = portion;
-			c_n->fsize = stbuf.st_size;
 			c_n->fd = open(tpath, O_RDONLY);
 
 			if (c) {
@@ -273,6 +271,7 @@ static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
 	struct concat_file * cf = open_files_find(fd);
 	struct chunk * c;
 	ssize_t bytes_read = 0;
+	off_t virtual_offset = 0;
 
 	if (!cf) {
 		return -EINVAL;
@@ -282,38 +281,36 @@ static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
 		return 0;
 	}
 	
-	c = cf->chunks;
-
-	for (; c && offset > c->fsize; c = c->next) {
-		offset -= c->fsize;
-	}
-
-	for (; c && count > c->fsize - offset; c = c->next) {
-		ssize_t rv = pread(c->fd, buf, c->fsize - offset, offset);
-
-		if (rv == c->fsize - offset) {
-			buf += rv;
-			offset = 0;
-			count -= rv;
-			bytes_read += rv;
-		} else if (rv > 0) {
-			bytes_read += rv;
-			return bytes_read;
-		} else {
-			return -errno;
+	#ifdef DEBUG
+	fprintf(stderr, "offset %lld, count %d, size %lld\n", offset, count, cf->fsize);
+	#endif
+	
+	for (c = cf->chunks; c && count > 0; c = c->next) {
+		#ifdef DEBUG
+		fprintf(stderr, " virtual_offset %lld, portion %d, offset %lld, start_offset %lld, count %d, bytes_read %d\n", virtual_offset, c->portion, offset, c->start_offset, count, bytes_read);
+		#endif
+		
+		if(virtual_offset + c->portion > offset)
+		{
+			off_t read_from_pos = c->start_offset + offset - virtual_offset;
+			ssize_t read_this_much = count < c->portion ? count : c->portion;
+			ssize_t bytes_read_now = pread(c->fd, buf, read_this_much, read_from_pos);
+			
+			#ifdef DEBUG
+			fprintf(stderr, "  read_from_pos %lld, read_this_much %d, bytes_read_now %d\n", read_from_pos, read_this_much, bytes_read_now);
+			#endif
+			
+			if (bytes_read_now < 0) return -errno;
+			
+			bytes_read += bytes_read_now;
+			buf += bytes_read_now;
+			offset += bytes_read_now;
+			count -= bytes_read_now;
 		}
+		
+		virtual_offset += c->portion;
 	}
 	
-	if (c && count > 0) {
-		ssize_t rv = pread(c->fd, buf, count, offset);
-
-		if (rv < 0) {
-			return -errno;
-		}
-
-		bytes_read += rv;
-	}
-
 	return bytes_read;
 }
 

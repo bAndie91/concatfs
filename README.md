@@ -1,32 +1,34 @@
 FUSE: Filesystem in Userspace for easy file concatenation of big files
 
-Files with the string "-concat-" anywhere in the filename are considered 
-concatenation description special files.
+# What does Concatfs do
 
-They contain a file list, which, when mounted as a fuse file system
-will turn these files into concatenations of the contents of the
-contained files.
+Concatfs mounts a directory.
+Files in this directory are concatenation description files.
+Concatenation description consists of lines, each line consists of
+byte offset, length, and filename parts separated by space.
 
-e.g.
-
-```
-  file1.MTS
-  file2.MTS
-  file3.MTS
-
-  bigmovie-concat-file.MTS
-```
-
-contents of bigmovie-concat-file.MTS:
+Say there is a file 'vfile.dat' with content:
 
 ```
-file1.MTS
-file2.MTS
-file3.MTS
+1024 512 /data/file1.dat
+0 512 /data/file2.dat
 ```
 
-on seperate lines. Empty lines or lines, which do not resolve to a file where
-a stat call succeeds, are ignored.
+Empty lines are ignored.
+
+It manifests a file on the same name 'vfile.dat', but its first 512
+byte is got from file1.dat from offset 1024, the second 512 bytes from
+file2.dat from the beginning. So vfile.dat is 1024 bytes long.
+
+Make sure your constituting files are really at least that big in size,
+that the prescribed length with the starting offset fits into it.
+Otherwise you'll get unexpected data out.
+
+Make sure referred files exist and readable. Relative paths are okay,
+they are relative to the source directory.
+
+
+# Dependency
 
 You will need to install libfuse-dev to compile:
 
@@ -34,15 +36,14 @@ You will need to install libfuse-dev to compile:
 sudo apt-get install libfuse-dev
 ```
 
-Compile with
+# Compile
 
 ```
-  gcc -Wall concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
+gcc -Wall concatfs.c `pkg-config fuse --cflags --libs` -o concatfs
 ```
 
-Use with:
+# Use
 
 ```
-  concatfs path-to-source-dir path-to-target-dir [fuse-mount options]
+concatfs path-to-source-dir path-to-target-dir [fuse-mount options]
 ```
-

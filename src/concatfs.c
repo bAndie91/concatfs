@@ -303,23 +303,6 @@ static int is_concatfs_file(const char * path)
 	return (strstr(basename(fpath), "-concat-") != 0);
 }
 
-static int concatfs_readlink(const char *path, char *link, size_t size)
-{
-	int rv = 0;
-	char fpath[PATH_MAX];
-
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-    
-	rv = readlink(fpath, link, size - 1);
-	if (rv < 0) {
-		rv = -errno;
-	} else {
-		link[rv] = '\0';
-		rv = 0;
-	}
-	
-	return rv;
-}
 static int concatfs_getattr(const char *path, struct stat *stbuf)
 {
 	char fpath[PATH_MAX];
@@ -422,181 +405,6 @@ static int concatfs_read(const char *path, char *buf, size_t size, off_t offset,
 	return rv;
 }
 
-static int concatfs_write(
-	const char *path, const char *buf, size_t size, off_t offset,
-	struct fuse_file_info *fi)
-{
-	int rv = 0;
-
-	if (is_concatfs_file(path)) {
-		return -EINVAL;
-	} else {
-		rv = pwrite(fi->fh, buf, size, offset);
-		if (rv < 0) {
-			return -errno;
-		}
-	}
-
-	return rv;
-}
-
-static int concatfs_mknod(const char *path, mode_t mode, dev_t dev)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = mknod(fpath, mode, dev);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_mkdir(const char *path, mode_t mode)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = mkdir(fpath, mode);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_unlink(const char *path)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = unlink(fpath);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_rmdir(const char *path)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = rmdir(fpath);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_symlink(const char *path, const char * link)
-{
-	int rv;
-	char flink[PATH_MAX];
-    
-	snprintf(flink, sizeof(flink), "%s/%s", src_dir, path);
-
-	rv = symlink(path, flink);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_rename(const char *path, const char *topath)
-{
-	int rv;
-	char fpath[PATH_MAX];
-	char ftopath[PATH_MAX];
-
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-	snprintf(ftopath, sizeof(ftopath), "%s/%s", src_dir, topath);
-	
-	rv = rename(fpath, ftopath);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_link(const char *path, const char *topath)
-{
-	int rv;
-	char fpath[PATH_MAX];
-	char ftopath[PATH_MAX];
-
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-	snprintf(ftopath, sizeof(ftopath), "%s/%s", src_dir, topath);
-	
-	rv = link(fpath, ftopath);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_chmod(const char *path, mode_t mode)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = chmod(fpath, mode);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_chown(const char *path, uid_t uid, gid_t gid)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = chown(fpath, uid, gid);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_truncate(const char *path, off_t nsize)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = truncate(fpath, nsize);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
-
-static int concatfs_utime(const char *path, struct utimbuf * buf)
-{
-	int rv;
-	char fpath[PATH_MAX];
-    
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-
-	rv = utime(fpath, buf);
-	if (rv < 0) {
-		return -errno;
-	}
-	return rv;
-}
 
 static int concatfs_access(const char *path, int mask)
 {
@@ -614,47 +422,14 @@ static int concatfs_access(const char *path, int mask)
 	return rv;
 }
 
-static int concatfs_create(
-	const char *path, mode_t mode, struct fuse_file_info *fi)
-{
-	int fd = 0;
-	char fpath[PATH_MAX];
-   
-	snprintf(fpath, sizeof(fpath), "%s/%s", src_dir, path);
-    
-	fd = creat(fpath, mode);
-    
-	if (fd < 0) {
-		return -errno;
-	}
-
-	fi->fh = fd;
-    
-	return 0;
-}
-
 
 static struct fuse_operations concatfs_oper = {
 	.getattr	= concatfs_getattr,
-	.readlink       = concatfs_readlink,
-	.mknod          = concatfs_mknod,
-	.mkdir          = concatfs_mkdir,
-	.unlink         = concatfs_unlink,
-	.rmdir          = concatfs_rmdir,
-	.symlink        = concatfs_symlink,
-	.rename         = concatfs_rename,
-	.link           = concatfs_link,
-	.chmod          = concatfs_chmod,
-	.chown          = concatfs_chown,
-	.truncate       = concatfs_truncate,
-	.utime          = concatfs_utime,
 	.open		= concatfs_open,
 	.read		= concatfs_read,
-	.write          = concatfs_write,
 	.release        = concatfs_release,
 	.readdir	= concatfs_readdir,
 	.access         = concatfs_access,
-	.create         = concatfs_create,
 };
 
 static void usage()

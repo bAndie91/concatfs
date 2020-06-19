@@ -289,15 +289,6 @@ static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
 	return bytes_read;
 }
 
-static int is_concatfs_file(const char * path)
-{
-	char fpath[PATH_MAX];
-
-	strncpy(fpath, path, sizeof(fpath));
-
-	return (strstr(basename(fpath), "-concat-") != 0);
-}
-
 static int concatfs_getattr(const char *path, struct stat *stbuf)
 {
 	char fpath[PATH_MAX];
@@ -309,9 +300,7 @@ static int concatfs_getattr(const char *path, struct stat *stbuf)
 	if (lstat(fpath, stbuf) != 0)
 		return -errno;
 	
-	if (is_concatfs_file(path)) {
-		stbuf->st_size = get_concat_file_size(fpath);
-	} 
+	stbuf->st_size = get_concat_file_size(fpath);
 
 	return 0;
 }
@@ -365,20 +354,14 @@ static int concatfs_open(const char *path, struct fuse_file_info *fi)
 
 	fi->fh = fd;
 
-	if (is_concatfs_file(path)) {
-		open_files_push_front(open_concat_file(fd, fpath));
-	}
+	open_files_push_front(open_concat_file(fd, fpath));
 
 	return 0;
 }
 
 static int concatfs_release(const char * path, struct fuse_file_info * fi)
 {
-	if (is_concatfs_file(path)) {
-		close_concat_file(open_files_erase(fi->fh));
-	} else {
-		close(fi->fh);
-	}
+	close_concat_file(open_files_erase(fi->fh));
 
 	return 0;
 }
@@ -386,18 +369,7 @@ static int concatfs_release(const char * path, struct fuse_file_info * fi)
 static int concatfs_read(const char *path, char *buf, size_t size, off_t offset,
 			 struct fuse_file_info *fi)
 {
-	int rv = 0;
-
-	if (is_concatfs_file(path)) {
-		return read_concat_file(fi->fh, buf, size, offset);
-	} else {
-		rv = pread(fi->fh, buf, size, offset);
-		if (rv < 0) {
-			return -errno;
-		}
-	}
-
-	return rv;
+	return read_concat_file(fi->fh, buf, size, offset);
 }
 
 

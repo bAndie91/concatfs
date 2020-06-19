@@ -20,6 +20,8 @@
 #include <sys/types.h>
 #include <dirent.h>
 
+#define MIN(a, b) ((a)<(b)?(a):(b))
+
 static char src_dir[PATH_MAX];
 
 struct chunk {
@@ -241,49 +243,55 @@ static off_t get_concat_file_size(const char * path)
 	return rv;
 }
 
-static int read_concat_file(int fd, void *buf, size_t count, off_t offset)
+static int read_concat_file(int fd, void *buf, size_t remaining_length, off_t req_offset)
 {
 	struct concat_file * cf = open_files_find(fd);
 	struct chunk * c;
 	ssize_t bytes_read = 0;
-	off_t virtual_offset = 0;
+	off_t current_offset = 0;
+	off_t read_from_pos;
+	ssize_t read_this_much;
+	ssize_t pread_rv;
+	char is_first_portion = 1;
 
 	if (!cf) {
 		return -EINVAL;
 	}
 
-	if (offset > cf->fsize) {
+	if (req_offset >= cf->fsize) {
 		return 0;
 	}
 	
 	#ifdef DEBUG
-	fprintf(stderr, "offset %lld, count %d, size %lld\n", offset, count, cf->fsize);
+	fprintf(stderr, "req_offset %lld, remaining_length %d, total size %lld\n", req_offset, remaining_length, cf->fsize);
 	#endif
 	
-	for (c = cf->chunks; c && count > 0; c = c->next) {
+	for (c = cf->chunks; c && remaining_length > 0; c = c->next) {
 		#ifdef DEBUG
-		fprintf(stderr, " virtual_offset %lld, portion %d, offset %lld, start_offset %lld, count %d, bytes_read %d\n", virtual_offset, c->portion, offset, c->start_offset, count, bytes_read);
+		fprintf(stderr, " current_offset %lld, portion %d, req_offset %lld, start_offset %lld, remaining_length %d, bytes_read %d\n", current_offset, c->portion, req_offset, c->start_offset, remaining_length, bytes_read);
 		#endif
 		
-		if(virtual_offset + c->portion > offset)
+		if(!is_first_portion || current_offset + c->portion > req_offset)
 		{
-			off_t read_from_pos = c->start_offset + offset - virtual_offset;
-			ssize_t read_this_much = count < c->portion ? count : c->portion;
-			ssize_t bytes_read_now = pread(c->fd, buf, read_this_much, read_from_pos);
+			read_from_pos = c->start_offset;
+			if(is_first_portion) read_from_pos += req_offset - current_offset;
+			read_this_much = MIN(remaining_length, c->portion - (read_from_pos - c->start_offset));
+			pread_rv = pread(c->fd, buf, read_this_much, read_from_pos);
 			
 			#ifdef DEBUG
-			fprintf(stderr, "  read_from_pos %lld, read_this_much %d, bytes_read_now %d\n", read_from_pos, read_this_much, bytes_read_now);
+			fprintf(stderr, "  read_from_pos %lld, read_this_much %d, bytes_read_now %d\n", read_from_pos, read_this_much, pread_rv);
 			#endif
 			
-			if (bytes_read_now < 0) return -errno;
+			if (pread_rv < 0) return -errno;
 			
-			bytes_read += bytes_read_now;
-			buf += bytes_read_now;
-			offset += bytes_read_now;
-			count -= bytes_read_now;
+			bytes_read += pread_rv;
+			buf += pread_rv;
+			remaining_length -= pread_rv;
+			
+			is_first_portion = 0;
 		}
 		
-		virtual_offset += c->portion;
+		current_offset += c->portion;
 	}
 	
 	return bytes_read;
